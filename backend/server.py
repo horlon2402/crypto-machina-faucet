@@ -608,6 +608,16 @@ async def get_admin_stats(admin: bool = Depends(verify_admin)):
         "total_withdrawn": total_withdrawn
     }
 
+@api_router.get("/admin/users")
+async def get_admin_users(admin: bool = Depends(verify_admin)):
+    """Get all users for admin panel"""
+    users = await db.users.find(
+        {},
+        {"_id": 0, "user_id": 1, "email": 1, "name": 1, "balances": 1, "consecutive_days": 1, "created_at": 1}
+    ).sort("created_at", -1).to_list(500)
+    
+    return {"users": users}
+
 @api_router.get("/admin/withdrawals")
 async def get_admin_withdrawals(
     status: str = "pending",
