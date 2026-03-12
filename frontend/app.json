@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Crypto Faucet Final",
-    "slug": "crypto-reward-final"
+    "slug": "crypto-reward-final",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
