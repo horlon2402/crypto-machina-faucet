@@ -649,7 +649,7 @@ async def approve_withdrawal(
     request_id: str,
     admin: bool = Depends(verify_admin)
 ):
-    """Approve a withdrawal request"""
+    """Approve a withdrawal request - marks as PAID"""
     withdrawal = await db.withdrawal_requests.find_one(
         {"request_id": request_id},
         {"_id": 0}
@@ -661,18 +661,18 @@ async def approve_withdrawal(
     if withdrawal["status"] != "pending":
         raise HTTPException(status_code=400, detail="Withdrawal is not pending")
     
-    # Update status to completed
+    # Update status to PAID (approved)
     await db.withdrawal_requests.update_one(
         {"request_id": request_id},
         {
             "$set": {
-                "status": "completed",
+                "status": "paid",
                 "processed_at": datetime.now(timezone.utc)
             }
         }
     )
     
-    return {"success": True, "message": "Withdrawal approved"}
+    return {"success": True, "message": "Withdrawal approved and marked as PAID"}
 
 @api_router.post("/admin/withdrawals/{request_id}/reject")
 async def reject_withdrawal(
