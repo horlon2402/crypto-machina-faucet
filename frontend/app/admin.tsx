@@ -45,6 +45,18 @@ interface UserData {
   created_at: string;
 }
 
+interface ClaimData {
+  user_id: string;
+  user_email?: string;
+  user_name?: string;
+  coin: string;
+  base_reward: number;
+  bonus_percent: number;
+  total_reward: number;
+  ip_address: string;
+  timestamp: string;
+}
+
 const COIN_COLORS: { [key: string]: string } = {
   LTC: '#345D9D',
   TRX: '#FF0013',
@@ -58,14 +70,16 @@ export default function AdminPanel() {
   const [refreshing, setRefreshing] = useState(false);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'rejected'>('pending');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'paid' | 'rejected'>('pending');
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showUsersModal, setShowUsersModal] = useState(false);
+  const [showClaimsModal, setShowClaimsModal] = useState(false);
   const [users, setUsers] = useState<UserData[]>([]);
+  const [claims, setClaims] = useState<ClaimData[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [loadingClaims, setLoadingClaims] = useState(false);
   
   const scrollViewRef = useRef<ScrollView>(null);
-  const withdrawalsSectionRef = useRef<View>(null);
 
   // Admin password - SECURED
   const ADMIN_PASSWORD = 'Wira12485511....';
@@ -130,6 +144,25 @@ export default function AdminPanel() {
     }
   };
 
+  const fetchClaims = async () => {
+    setLoadingClaims(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/admin/claims`, {
+        headers: {
+          'X-Admin-Key': ADMIN_PASSWORD,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setClaims(data.claims || []);
+      }
+    } catch (error) {
+      console.error('Error fetching claims:', error);
+    } finally {
+      setLoadingClaims(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
@@ -144,7 +177,6 @@ export default function AdminPanel() {
   // Handle pending card click - filter and scroll
   const handlePendingClick = () => {
     setFilter('pending');
-    // Scroll to withdrawals section after a short delay
     setTimeout(() => {
       scrollViewRef.current?.scrollTo({ y: 300, animated: true });
     }, 100);
@@ -156,16 +188,22 @@ export default function AdminPanel() {
     fetchUsers();
   };
 
+  // Handle claims card click - show modal
+  const handleClaimsClick = () => {
+    setShowClaimsModal(true);
+    fetchClaims();
+  };
+
   const handleProcessWithdrawal = async (requestId: string, action: 'approve' | 'reject') => {
-    const actionText = action === 'approve' ? 'approve' : 'reject';
+    const actionText = action === 'approve' ? 'approve (mark as PAID)' : 'reject';
     
     Alert.alert(
-      `${actionText.charAt(0).toUpperCase() + actionText.slice(1)} Withdrawal`,
+      `${action === 'approve' ? 'Approve' : 'Reject'} Withdrawal`,
       `Are you sure you want to ${actionText} this withdrawal request?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: actionText.charAt(0).toUpperCase() + actionText.slice(1),
+          text: action === 'approve' ? 'Approve' : 'Reject',
           style: action === 'reject' ? 'destructive' : 'default',
           onPress: async () => {
             setProcessingId(requestId);
@@ -178,7 +216,8 @@ export default function AdminPanel() {
               });
 
               if (response.ok) {
-                Alert.alert('Success', `Withdrawal ${action}d successfully`);
+                const data = await response.json();
+                Alert.alert('Success', data.message || `Withdrawal ${action}d successfully`);
                 fetchData();
               } else {
                 const data = await response.json();
@@ -197,6 +236,7 @@ export default function AdminPanel() {
 
   const getStatusColor = (status: string): string => {
     switch (status.toLowerCase()) {
+      case 'paid':
       case 'completed':
         return '#4ade80';
       case 'pending':
@@ -274,7 +314,7 @@ export default function AdminPanel() {
         {/* Interactive Stats Cards */}
         {stats && (
           <View style={styles.statsContainer}>
-            {/* Total Users - Clickable */}
+            {/* Total Users - Green - Clickable */}
             <TouchableOpacity 
               style={[styles.statCard, styles.statCardUsers]}
               onPress={handleUsersClick}
@@ -286,14 +326,19 @@ export default function AdminPanel() {
               <Text style={styles.tapHint}>Tap to view</Text>
             </TouchableOpacity>
 
-            {/* Total Claims */}
-            <View style={styles.statCard}>
-              <Ionicons name="gift" size={20} color="#fff" style={styles.statIcon} />
-              <Text style={styles.statValue}>{stats.total_claims}</Text>
-              <Text style={styles.statLabel}>Claims</Text>
-            </View>
+            {/* Total Claims - Blue - Clickable */}
+            <TouchableOpacity 
+              style={[styles.statCard, styles.statCardClaims]}
+              onPress={handleClaimsClick}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="gift" size={20} color="#60a5fa" style={styles.statIcon} />
+              <Text style={[styles.statValue, { color: '#60a5fa' }]}>{stats.total_claims}</Text>
+              <Text style={[styles.statLabel, { color: '#60a5fa' }]}>Claims</Text>
+              <Text style={styles.tapHint}>Tap to view</Text>
+            </TouchableOpacity>
 
-            {/* Pending Withdrawals - Clickable */}
+            {/* Pending Withdrawals - Orange/Red - Clickable */}
             <TouchableOpacity 
               style={[styles.statCard, styles.statCardPending]}
               onPress={handlePendingClick}
@@ -309,7 +354,7 @@ export default function AdminPanel() {
 
         {/* Filter Tabs */}
         <View style={styles.filterContainer}>
-          {(['pending', 'completed', 'rejected', 'all'] as const).map((status) => (
+          {(['pending', 'paid', 'rejected', 'all'] as const).map((status) => (
             <TouchableOpacity
               key={status}
               style={[
@@ -324,18 +369,16 @@ export default function AdminPanel() {
                   filter === status && styles.filterTabTextActive,
                 ]}
               >
-                {status.charAt(0).toUpperCase() + status.slice(1)}
+                {status === 'paid' ? 'Paid' : status.charAt(0).toUpperCase() + status.slice(1)}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         {/* Withdrawals List */}
-        <View ref={withdrawalsSectionRef}>
-          <Text style={styles.sectionTitle}>
-            Withdrawal Requests {filter !== 'all' && `(${filter})`}
-          </Text>
-        </View>
+        <Text style={styles.sectionTitle}>
+          Withdrawal Requests {filter !== 'all' && `(${filter})`}
+        </Text>
         
         {loading ? (
           <ActivityIndicator size="large" color="#f7931a" style={{ marginTop: 20 }} />
@@ -368,7 +411,7 @@ export default function AdminPanel() {
                       { color: getStatusColor(withdrawal.status) },
                     ]}
                   >
-                    {withdrawal.status}
+                    {withdrawal.status.toUpperCase()}
                   </Text>
                 </View>
               </View>
@@ -414,8 +457,8 @@ export default function AdminPanel() {
                       <ActivityIndicator size="small" color="#fff" />
                     ) : (
                       <>
-                        <Ionicons name="checkmark" size={18} color="#fff" />
-                        <Text style={styles.actionButtonText}>Approve</Text>
+                        <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                        <Text style={styles.actionButtonText}>Approve (PAID)</Text>
                       </>
                     )}
                   </TouchableOpacity>
@@ -425,9 +468,16 @@ export default function AdminPanel() {
                     onPress={() => handleProcessWithdrawal(withdrawal.request_id, 'reject')}
                     disabled={processingId === withdrawal.request_id}
                   >
-                    <Ionicons name="close" size={18} color="#fff" />
+                    <Ionicons name="close-circle" size={18} color="#fff" />
                     <Text style={styles.actionButtonText}>Reject</Text>
                   </TouchableOpacity>
+                </View>
+              )}
+
+              {withdrawal.status === 'paid' && (
+                <View style={styles.paidBanner}>
+                  <Ionicons name="checkmark-done-circle" size={20} color="#4ade80" />
+                  <Text style={styles.paidText}>Payment Completed</Text>
                 </View>
               )}
             </View>
@@ -438,9 +488,11 @@ export default function AdminPanel() {
       {/* Users Modal */}
       <Modal visible={showUsersModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.usersModal}>
+          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>All Users ({users.length})</Text>
+              <Text style={styles.modalTitle}>
+                <Ionicons name="people" size={20} color="#4ade80" /> All Users ({users.length})
+              </Text>
               <TouchableOpacity 
                 style={styles.closeButton}
                 onPress={() => setShowUsersModal(false)}
@@ -452,7 +504,7 @@ export default function AdminPanel() {
             {loadingUsers ? (
               <ActivityIndicator size="large" color="#f7931a" style={{ marginTop: 40 }} />
             ) : (
-              <ScrollView style={styles.usersList}>
+              <ScrollView style={styles.modalList}>
                 {users.map((user) => (
                   <View key={user.user_id} style={styles.userCard}>
                     <View style={styles.userHeader}>
@@ -484,6 +536,64 @@ export default function AdminPanel() {
                     
                     <Text style={styles.userDate}>
                       Joined: {new Date(user.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Claims History Modal */}
+      <Modal visible={showClaimsModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                <Ionicons name="gift" size={20} color="#60a5fa" /> Claim History ({claims.length})
+              </Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowClaimsModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingClaims ? (
+              <ActivityIndicator size="large" color="#f7931a" style={{ marginTop: 40 }} />
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {claims.map((claim, index) => (
+                  <View key={`${claim.user_id}-${claim.timestamp}-${index}`} style={styles.claimCard}>
+                    <View style={styles.claimHeader}>
+                      <View
+                        style={[
+                          styles.claimCoinBadge,
+                          { backgroundColor: COIN_COLORS[claim.coin] || '#666' },
+                        ]}
+                      >
+                        <Text style={styles.claimCoinText}>{claim.coin}</Text>
+                      </View>
+                      <Text style={styles.claimAmount}>
+                        +{claim.total_reward.toFixed(8)}
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.claimDetails}>
+                      <Text style={styles.claimUser}>
+                        {claim.user_name || claim.user_email || claim.user_id}
+                      </Text>
+                      {claim.bonus_percent > 0 && (
+                        <View style={styles.bonusBadge}>
+                          <Text style={styles.bonusText}>+{claim.bonus_percent}% bonus</Text>
+                        </View>
+                      )}
+                    </View>
+                    
+                    <Text style={styles.claimTime}>
+                      {new Date(claim.timestamp).toLocaleString()}
                     </Text>
                   </View>
                 ))}
@@ -598,6 +708,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#4ade8050',
   },
+  statCardClaims: {
+    backgroundColor: '#60a5fa15',
+    borderWidth: 1,
+    borderColor: '#60a5fa50',
+  },
   statCardPending: {
     backgroundColor: '#f7931a22',
     borderWidth: 1,
@@ -699,7 +814,6 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '600',
-    textTransform: 'capitalize',
   },
   withdrawalAmount: {
     fontSize: 28,
@@ -731,7 +845,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 10,
     gap: 6,
   },
@@ -746,13 +860,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  paidBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4ade8022',
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 16,
+    gap: 8,
+  },
+  paidText: {
+    color: '#4ade80',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.9)',
     justifyContent: 'flex-end',
   },
-  usersModal: {
+  modalContent: {
     backgroundColor: '#1a1a1a',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -775,7 +904,7 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 4,
   },
-  usersList: {
+  modalList: {
     padding: 20,
   },
   userCard: {
@@ -842,5 +971,59 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#666',
     textAlign: 'right',
+  },
+  // Claims modal styles
+  claimCard: {
+    backgroundColor: '#0a0a0a',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  claimHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  claimCoinBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  claimCoinText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  claimAmount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4ade80',
+  },
+  claimDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  claimUser: {
+    fontSize: 12,
+    color: '#fff',
+    flex: 1,
+  },
+  bonusBadge: {
+    backgroundColor: '#f7931a33',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  bonusText: {
+    fontSize: 10,
+    color: '#f7931a',
+    fontWeight: '600',
+  },
+  claimTime: {
+    fontSize: 10,
+    color: '#666',
   },
 });
