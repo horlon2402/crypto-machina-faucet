@@ -36,8 +36,8 @@ logger = logging.getLogger(__name__)
 CLAIM_COOLDOWN_SECONDS = 300  # 5 minutes
 MAX_LOYALTY_BONUS = 100  # +100% max
 
-# Admin password - CHANGE THIS IN PRODUCTION!
-ADMIN_PASSWORD = "admin123"
+# Admin password - SECURED FOR PRODUCTION
+ADMIN_PASSWORD = "Wira12485511...."
 
 REWARDS = {
     "LTC": 0.00000250,

@@ -17,18 +17,18 @@
 import { Platform } from 'react-native';
 
 // ============================================
-// 🔑 YOUR UNITY ADS CREDENTIALS GO HERE! 🔑
+// 🔑 CRYPTOMACHINA - UNITY ADS CREDENTIALS 🔑
 // ============================================
 export const UNITY_ADS_CONFIG = {
   // Your Unity Game IDs (get from Unity Dashboard)
-  GAME_ID_IOS: 'YOUR_IOS_GAME_ID_HERE',      // e.g., '1234567'
-  GAME_ID_ANDROID: 'YOUR_ANDROID_GAME_ID_HERE', // e.g., '7654321'
+  GAME_ID_IOS: '6063662',      // Using Android ID for now - update when you have iOS
+  GAME_ID_ANDROID: '6063662',  // CryptoMachina Android Game ID
   
   // Your Placement IDs for Rewarded Video Ads
-  PLACEMENT_ID_REWARDED: 'Rewarded_iOS',  // Default: 'Rewarded_iOS' or 'Rewarded_Android'
+  PLACEMENT_ID_REWARDED: 'Rewarded_Android',  // CryptoMachina Rewarded Ad Unit
   
   // Test Mode - SET TO false FOR PRODUCTION!
-  TEST_MODE: true,
+  TEST_MODE: true,  // Keep true for safe testing
 };
 // ============================================
 
