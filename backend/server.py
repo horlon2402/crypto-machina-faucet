@@ -618,6 +618,26 @@ async def get_admin_users(admin: bool = Depends(verify_admin)):
     
     return {"users": users}
 
+@api_router.get("/admin/claims")
+async def get_admin_claims(admin: bool = Depends(verify_admin)):
+    """Get recent claim history for admin panel"""
+    claims = await db.claim_logs.find(
+        {},
+        {"_id": 0}
+    ).sort("timestamp", -1).to_list(100)
+    
+    # Add user email to each claim
+    for claim in claims:
+        user = await db.users.find_one(
+            {"user_id": claim["user_id"]},
+            {"_id": 0, "email": 1, "name": 1}
+        )
+        if user:
+            claim["user_email"] = user.get("email")
+            claim["user_name"] = user.get("name")
+    
+    return {"claims": claims}
+
 @api_router.get("/admin/withdrawals")
 async def get_admin_withdrawals(
     status: str = "pending",
