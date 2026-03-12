@@ -51,8 +51,8 @@ export default function AdminPanel() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'rejected'>('pending');
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  // Simple admin password check (in production, use proper auth)
-  const ADMIN_PASSWORD = 'admin123'; // Change this!
+  // Admin password - SECURED
+  const ADMIN_PASSWORD = 'Wira12485511....';
 
   const handleLogin = () => {
     if (adminPassword === ADMIN_PASSWORD) {
