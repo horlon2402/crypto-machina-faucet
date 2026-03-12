@@ -63,21 +63,59 @@ export default function DashboardScreen() {
   const [adCoin, setAdCoin] = useState<string | null>(null);
   const [adProgress, setAdProgress] = useState(0);
   const [unityAdsReady, setUnityAdsReady] = useState(false);
+  const [adStatus, setAdStatus] = useState<string>('initializing');
 
   // Initialize Unity Ads on mount
   useEffect(() => {
     const initAds = async () => {
-      if (Platform.OS !== 'web' && isUnityAdsConfigured()) {
-        const success = await unityAdsService.initialize();
-        setUnityAdsReady(success);
-        if (success) {
-          // Pre-load an ad
-          await unityAdsService.loadRewardedAd();
-        }
+      if (Platform.OS === 'web') {
+        setAdStatus('web-mock');
+        return;
+      }
+      
+      if (!isUnityAdsConfigured()) {
+        setAdStatus('not-configured');
+        return;
+      }
+      
+      setAdStatus('initializing');
+      const success = await unityAdsService.initialize();
+      setUnityAdsReady(success);
+      if (success) {
+        setAdStatus('loading');
+        const loaded = await unityAdsService.loadRewardedAd();
+        setAdStatus(loaded ? 'ready' : 'load-failed');
+      } else {
+        setAdStatus('init-failed');
       }
     };
     initAds();
   }, []);
+
+  // Refresh Unity Ads
+  const refreshUnityAds = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Info', 'Unity Ads only works on mobile devices. Web preview uses simulated ads.');
+      return;
+    }
+    
+    setAdStatus('refreshing');
+    try {
+      const success = await unityAdsService.initialize();
+      if (success) {
+        const loaded = await unityAdsService.loadRewardedAd();
+        setAdStatus(loaded ? 'ready' : 'load-failed');
+        setUnityAdsReady(loaded);
+        Alert.alert('Success', loaded ? 'Ad loaded successfully!' : 'Failed to load ad');
+      } else {
+        setAdStatus('init-failed');
+        Alert.alert('Error', 'Failed to initialize Unity Ads');
+      }
+    } catch (error) {
+      setAdStatus('error');
+      Alert.alert('Error', 'Failed to refresh ads');
+    }
+  };
 
   // Check auth and redirect if not authenticated
   useEffect(() => {
