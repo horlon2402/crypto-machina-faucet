@@ -16,7 +16,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.harnolix.cryptomachina"
+      "package": "com.harnolix.cryptofaucet"
     },
     "web": {
       "bundler": "metro",
