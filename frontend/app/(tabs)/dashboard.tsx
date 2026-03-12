@@ -541,6 +541,11 @@ const styles = StyleSheet.create({
   adStatusText: {
     fontSize: 12,
     color: '#888',
+    flex: 1,
+  },
+  refreshAdsButton: {
+    padding: 6,
+    marginLeft: 8,
   },
   loyaltyCard: {
     backgroundColor: '#1a1a1a',
