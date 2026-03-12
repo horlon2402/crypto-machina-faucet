@@ -15,8 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
-
+const BACKEND_URL = 'https://crypto-machina-faucet.onrender.com';
 interface WithdrawalRequest {
   request_id: string;
   user_id: string;
