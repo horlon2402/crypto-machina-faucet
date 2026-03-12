@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +36,15 @@ interface AdminStats {
   total_withdrawn: { [key: string]: number };
 }
 
+interface UserData {
+  user_id: string;
+  email: string;
+  name: string;
+  balances: { LTC: number; TRX: number; JST: number };
+  consecutive_days: number;
+  created_at: string;
+}
+
 const COIN_COLORS: { [key: string]: string } = {
   LTC: '#345D9D',
   TRX: '#FF0013',
@@ -50,6 +60,12 @@ export default function AdminPanel() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed' | 'rejected'>('pending');
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [showUsersModal, setShowUsersModal] = useState(false);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  
+  const scrollViewRef = useRef<ScrollView>(null);
+  const withdrawalsSectionRef = useRef<View>(null);
 
   // Admin password - SECURED
   const ADMIN_PASSWORD = 'Wira12485511....';
@@ -95,6 +111,25 @@ export default function AdminPanel() {
     }
   }, [filter]);
 
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/admin/users`, {
+        headers: {
+          'X-Admin-Key': ADMIN_PASSWORD,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data.users || []);
+      }
+    } catch (error) {
+      console.error('Error fetching users:', error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchData();
@@ -104,6 +139,21 @@ export default function AdminPanel() {
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
+  };
+
+  // Handle pending card click - filter and scroll
+  const handlePendingClick = () => {
+    setFilter('pending');
+    // Scroll to withdrawals section after a short delay
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: 300, animated: true });
+    }, 100);
+  };
+
+  // Handle users card click - show modal
+  const handleUsersClick = () => {
+    setShowUsersModal(true);
+    fetchUsers();
   };
 
   const handleProcessWithdrawal = async (requestId: string, action: 'approve' | 'reject') => {
@@ -158,6 +208,11 @@ export default function AdminPanel() {
     }
   };
 
+  const formatBalance = (amount: number, coin: string): string => {
+    if (coin === 'LTC') return amount.toFixed(8);
+    return amount.toFixed(4);
+  };
+
   if (!isAuthenticated) {
     return (
       <SafeAreaView style={styles.container}>
@@ -194,7 +249,7 @@ export default function AdminPanel() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>Admin Panel</Text>
-          <Text style={styles.headerSubtitle}>Manage withdrawals</Text>
+          <Text style={styles.headerSubtitle}>Manage withdrawals & users</Text>
         </View>
         <TouchableOpacity 
           style={styles.logoutButton} 
@@ -205,6 +260,7 @@ export default function AdminPanel() {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
@@ -215,21 +271,39 @@ export default function AdminPanel() {
           />
         }
       >
-        {/* Stats Cards */}
+        {/* Interactive Stats Cards */}
         {stats && (
           <View style={styles.statsContainer}>
+            {/* Total Users - Clickable */}
+            <TouchableOpacity 
+              style={[styles.statCard, styles.statCardUsers]}
+              onPress={handleUsersClick}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="people" size={20} color="#4ade80" style={styles.statIcon} />
+              <Text style={[styles.statValue, { color: '#4ade80' }]}>{stats.total_users}</Text>
+              <Text style={[styles.statLabel, { color: '#4ade80' }]}>Users</Text>
+              <Text style={styles.tapHint}>Tap to view</Text>
+            </TouchableOpacity>
+
+            {/* Total Claims */}
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{stats.total_users}</Text>
-              <Text style={styles.statLabel}>Total Users</Text>
-            </View>
-            <View style={styles.statCard}>
+              <Ionicons name="gift" size={20} color="#fff" style={styles.statIcon} />
               <Text style={styles.statValue}>{stats.total_claims}</Text>
-              <Text style={styles.statLabel}>Total Claims</Text>
+              <Text style={styles.statLabel}>Claims</Text>
             </View>
-            <View style={[styles.statCard, styles.statCardHighlight]}>
+
+            {/* Pending Withdrawals - Clickable */}
+            <TouchableOpacity 
+              style={[styles.statCard, styles.statCardPending]}
+              onPress={handlePendingClick}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="time" size={20} color="#f7931a" style={styles.statIcon} />
               <Text style={styles.statValueHighlight}>{stats.pending_withdrawals}</Text>
               <Text style={styles.statLabelHighlight}>Pending</Text>
-            </View>
+              <Text style={styles.tapHint}>Tap to filter</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -257,7 +331,11 @@ export default function AdminPanel() {
         </View>
 
         {/* Withdrawals List */}
-        <Text style={styles.sectionTitle}>Withdrawal Requests</Text>
+        <View ref={withdrawalsSectionRef}>
+          <Text style={styles.sectionTitle}>
+            Withdrawal Requests {filter !== 'all' && `(${filter})`}
+          </Text>
+        </View>
         
         {loading ? (
           <ActivityIndicator size="large" color="#f7931a" style={{ marginTop: 20 }} />
@@ -356,6 +434,64 @@ export default function AdminPanel() {
           ))
         )}
       </ScrollView>
+
+      {/* Users Modal */}
+      <Modal visible={showUsersModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.usersModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>All Users ({users.length})</Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowUsersModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {loadingUsers ? (
+              <ActivityIndicator size="large" color="#f7931a" style={{ marginTop: 40 }} />
+            ) : (
+              <ScrollView style={styles.usersList}>
+                {users.map((user) => (
+                  <View key={user.user_id} style={styles.userCard}>
+                    <View style={styles.userHeader}>
+                      <Ionicons name="person-circle" size={32} color="#f7931a" />
+                      <View style={styles.userInfo}>
+                        <Text style={styles.userName}>{user.name}</Text>
+                        <Text style={styles.userEmail}>{user.email}</Text>
+                      </View>
+                      <View style={styles.streakBadge}>
+                        <Ionicons name="flame" size={12} color="#f7931a" />
+                        <Text style={styles.streakText}>{user.consecutive_days}d</Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.balancesRow}>
+                      <View style={styles.balanceItem}>
+                        <Text style={styles.balanceCoin}>LTC</Text>
+                        <Text style={styles.balanceValue}>{formatBalance(user.balances?.LTC || 0, 'LTC')}</Text>
+                      </View>
+                      <View style={styles.balanceItem}>
+                        <Text style={styles.balanceCoin}>TRX</Text>
+                        <Text style={styles.balanceValue}>{formatBalance(user.balances?.TRX || 0, 'TRX')}</Text>
+                      </View>
+                      <View style={styles.balanceItem}>
+                        <Text style={styles.balanceCoin}>JST</Text>
+                        <Text style={styles.balanceValue}>{formatBalance(user.balances?.JST || 0, 'JST')}</Text>
+                      </View>
+                    </View>
+                    
+                    <Text style={styles.userDate}>
+                      Joined: {new Date(user.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -457,10 +593,18 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
   },
-  statCardHighlight: {
+  statCardUsers: {
+    backgroundColor: '#4ade8015',
+    borderWidth: 1,
+    borderColor: '#4ade8050',
+  },
+  statCardPending: {
     backgroundColor: '#f7931a22',
     borderWidth: 1,
     borderColor: '#f7931a',
+  },
+  statIcon: {
+    marginBottom: 4,
   },
   statValue: {
     fontSize: 24,
@@ -480,6 +624,11 @@ const styles = StyleSheet.create({
   statLabelHighlight: {
     fontSize: 12,
     color: '#f7931a',
+    marginTop: 4,
+  },
+  tapHint: {
+    fontSize: 9,
+    color: '#666',
     marginTop: 4,
   },
   filterContainer: {
@@ -596,5 +745,102 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'flex-end',
+  },
+  usersModal: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  usersList: {
+    padding: 20,
+  },
+  userCard: {
+    backgroundColor: '#0a0a0a',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  userHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  userEmail: {
+    fontSize: 12,
+    color: '#888',
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f7931a22',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  streakText: {
+    fontSize: 12,
+    color: '#f7931a',
+    fontWeight: '600',
+  },
+  balancesRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 8,
+  },
+  balanceItem: {
+    flex: 1,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 8,
+    padding: 8,
+    alignItems: 'center',
+  },
+  balanceCoin: {
+    fontSize: 10,
+    color: '#888',
+    marginBottom: 2,
+  },
+  balanceValue: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  userDate: {
+    fontSize: 10,
+    color: '#666',
+    textAlign: 'right',
   },
 });
