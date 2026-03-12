@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Response, Header
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 # ===================== CONSTANTS =====================
 CLAIM_COOLDOWN_SECONDS = 300  # 5 minutes
 MAX_LOYALTY_BONUS = 100  # +100% max
+
+# Admin password - CHANGE THIS IN PRODUCTION!
+ADMIN_PASSWORD = "admin123"
 
 REWARDS = {
     "LTC": 0.00000250,
@@ -186,6 +189,13 @@ def get_client_ip(request: Request) -> str:
         return real_ip
     
     return request.client.host if request.client else "unknown"
+
+# ===================== ADMIN AUTH =====================
+async def verify_admin(x_admin_key: Optional[str] = Header(None)) -> bool:
+    """Verify admin authentication"""
+    if x_admin_key != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    return True
 
 # ===================== VPN DETECTION =====================
 # Simple VPN detection - check for known VPN/proxy patterns
@@ -573,6 +583,131 @@ async def get_withdrawal_history(user: User = Depends(require_auth)):
     ).sort("created_at", -1).to_list(100)
     
     return {"withdrawals": withdrawals}
+
+# ===================== ADMIN ENDPOINTS =====================
+@api_router.get("/admin/stats")
+async def get_admin_stats(admin: bool = Depends(verify_admin)):
+    """Get admin statistics"""
+    total_users = await db.users.count_documents({})
+    total_claims = await db.claim_logs.count_documents({})
+    pending_withdrawals = await db.withdrawal_requests.count_documents({"status": "pending"})
+    
+    # Calculate total withdrawn per coin
+    pipeline = [
+        {"$match": {"status": "completed"}},
+        {"$group": {"_id": "$coin", "total": {"$sum": "$amount"}}}
+    ]
+    withdrawn_cursor = db.withdrawal_requests.aggregate(pipeline)
+    withdrawn_list = await withdrawn_cursor.to_list(10)
+    total_withdrawn = {item["_id"]: item["total"] for item in withdrawn_list}
+    
+    return {
+        "total_users": total_users,
+        "total_claims": total_claims,
+        "pending_withdrawals": pending_withdrawals,
+        "total_withdrawn": total_withdrawn
+    }
+
+@api_router.get("/admin/withdrawals")
+async def get_admin_withdrawals(
+    status: str = "pending",
+    admin: bool = Depends(verify_admin)
+):
+    """Get withdrawal requests for admin"""
+    query = {}
+    if status != "all":
+        query["status"] = status
+    
+    withdrawals = await db.withdrawal_requests.find(
+        query,
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    
+    # Add user email to each withdrawal
+    for withdrawal in withdrawals:
+        user = await db.users.find_one(
+            {"user_id": withdrawal["user_id"]},
+            {"_id": 0, "email": 1}
+        )
+        if user:
+            withdrawal["user_email"] = user.get("email")
+    
+    return {"withdrawals": withdrawals}
+
+@api_router.post("/admin/withdrawals/{request_id}/approve")
+async def approve_withdrawal(
+    request_id: str,
+    admin: bool = Depends(verify_admin)
+):
+    """Approve a withdrawal request"""
+    withdrawal = await db.withdrawal_requests.find_one(
+        {"request_id": request_id},
+        {"_id": 0}
+    )
+    
+    if not withdrawal:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+    
+    if withdrawal["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Withdrawal is not pending")
+    
+    # Update status to completed
+    await db.withdrawal_requests.update_one(
+        {"request_id": request_id},
+        {
+            "$set": {
+                "status": "completed",
+                "processed_at": datetime.now(timezone.utc)
+            }
+        }
+    )
+    
+    return {"success": True, "message": "Withdrawal approved"}
+
+@api_router.post("/admin/withdrawals/{request_id}/reject")
+async def reject_withdrawal(
+    request_id: str,
+    admin: bool = Depends(verify_admin)
+):
+    """Reject a withdrawal request and refund the user"""
+    withdrawal = await db.withdrawal_requests.find_one(
+        {"request_id": request_id},
+        {"_id": 0}
+    )
+    
+    if not withdrawal:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found")
+    
+    if withdrawal["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Withdrawal is not pending")
+    
+    # Refund the user
+    user_doc = await db.users.find_one(
+        {"user_id": withdrawal["user_id"]},
+        {"_id": 0}
+    )
+    
+    if user_doc:
+        current_balance = user_doc.get("balances", {}).get(withdrawal["coin"], 0.0)
+        new_balance = current_balance + withdrawal["amount"]
+        
+        await db.users.update_one(
+            {"user_id": withdrawal["user_id"]},
+            {"$set": {f"balances.{withdrawal['coin']}": new_balance}}
+        )
+    
+    # Update status to rejected
+    await db.withdrawal_requests.update_one(
+        {"request_id": request_id},
+        {
+            "$set": {
+                "status": "rejected",
+                "processed_at": datetime.now(timezone.utc)
+            }
+        }
+    )
+    
+    return {"success": True, "message": "Withdrawal rejected and refunded"}
 
 # ===================== HEALTH CHECK =====================
 @api_router.get("/")

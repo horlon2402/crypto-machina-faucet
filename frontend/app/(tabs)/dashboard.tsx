@@ -9,11 +9,13 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { router } from 'expo-router';
+import unityAdsService, { isUnityAdsConfigured, UNITY_ADS_CONFIG } from '../../src/services/unityAds';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -60,6 +62,22 @@ export default function DashboardScreen() {
   const [showAdModal, setShowAdModal] = useState(false);
   const [adCoin, setAdCoin] = useState<string | null>(null);
   const [adProgress, setAdProgress] = useState(0);
+  const [unityAdsReady, setUnityAdsReady] = useState(false);
+
+  // Initialize Unity Ads on mount
+  useEffect(() => {
+    const initAds = async () => {
+      if (Platform.OS !== 'web' && isUnityAdsConfigured()) {
+        const success = await unityAdsService.initialize();
+        setUnityAdsReady(success);
+        if (success) {
+          // Pre-load an ad
+          await unityAdsService.loadRewardedAd();
+        }
+      }
+    };
+    initAds();
+  }, []);
 
   // Check auth and redirect if not authenticated
   useEffect(() => {
@@ -153,14 +171,13 @@ export default function DashboardScreen() {
     return amount.toFixed(4);
   };
 
-  // Simulated rewarded ad
-  const showRewardedAd = async (coin: string): Promise<boolean> => {
+  // Mock rewarded ad for web/testing
+  const showMockRewardedAd = async (coin: string): Promise<boolean> => {
     return new Promise((resolve) => {
       setAdCoin(coin);
       setAdProgress(0);
       setShowAdModal(true);
 
-      // Simulate ad progress (5 seconds)
       let progress = 0;
       const adInterval = setInterval(() => {
         progress += 20;
@@ -177,6 +194,20 @@ export default function DashboardScreen() {
         }
       }, 1000);
     });
+  };
+
+  // Show rewarded ad (Unity Ads or Mock)
+  const showRewardedAd = async (coin: string): Promise<boolean> => {
+    // Use Unity Ads on mobile if configured
+    if (Platform.OS !== 'web' && unityAdsReady && isUnityAdsConfigured()) {
+      const result = await unityAdsService.showRewardedAd();
+      // Pre-load next ad
+      unityAdsService.loadRewardedAd();
+      return result;
+    }
+    
+    // Fallback to mock ad for web or if Unity not configured
+    return showMockRewardedAd(coin);
   };
 
   const handleClaim = async (coin: string) => {
@@ -260,6 +291,22 @@ export default function DashboardScreen() {
           />
         }
       >
+        {/* Unity Ads Status Banner (for debugging) */}
+        {UNITY_ADS_CONFIG.TEST_MODE && (
+          <View style={styles.adStatusBanner}>
+            <Ionicons 
+              name={isUnityAdsConfigured() ? "checkmark-circle" : "warning"} 
+              size={16} 
+              color={isUnityAdsConfigured() ? "#4ade80" : "#fbbf24"} 
+            />
+            <Text style={styles.adStatusText}>
+              {isUnityAdsConfigured() 
+                ? `Unity Ads: Test Mode (${Platform.OS})` 
+                : 'Unity Ads: Not Configured (Using Mock)'}
+            </Text>
+          </View>
+        )}
+
         {/* Loyalty Bonus Card */}
         <View style={styles.loyaltyCard}>
           <View style={styles.loyaltyHeader}>
@@ -350,7 +397,7 @@ export default function DashboardScreen() {
         })}
       </ScrollView>
 
-      {/* Ad Modal */}
+      {/* Mock Ad Modal (for web/testing) */}
       <Modal visible={showAdModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.adModal}>
@@ -364,10 +411,16 @@ export default function DashboardScreen() {
             </View>
             
             <Text style={styles.adMessage}>
-              Please wait while the ad plays.\nYou'll receive your {adCoin} reward after!
+              Please wait while the ad plays.{"\n"}You'll receive your {adCoin} reward after!
             </Text>
             
             <Text style={styles.adCounter}>{Math.floor(adProgress / 20)}/5 seconds</Text>
+            
+            {!isUnityAdsConfigured() && (
+              <Text style={styles.mockAdNote}>
+                (Mock Ad - Configure Unity Ads for real ads)
+              </Text>
+            )}
           </View>
         </View>
       </Modal>
@@ -412,6 +465,21 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+  },
+  adStatusBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1a1a1a',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 6,
+  },
+  adStatusText: {
+    fontSize: 12,
+    color: '#888',
   },
   loyaltyCard: {
     backgroundColor: '#1a1a1a',
@@ -591,5 +659,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#f7931a',
+  },
+  mockAdNote: {
+    fontSize: 10,
+    color: '#666',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 });
