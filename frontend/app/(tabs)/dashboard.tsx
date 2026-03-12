@@ -329,19 +329,42 @@ export default function DashboardScreen() {
           />
         }
       >
-        {/* Unity Ads Status Banner (for debugging) */}
+        {/* Unity Ads Status Banner with Refresh */}
         {UNITY_ADS_CONFIG.TEST_MODE && (
           <View style={styles.adStatusBanner}>
             <Ionicons 
-              name={isUnityAdsConfigured() ? "checkmark-circle" : "warning"} 
+              name={
+                adStatus === 'ready' ? 'checkmark-circle' : 
+                adStatus === 'web-mock' ? 'desktop-outline' :
+                adStatus === 'initializing' || adStatus === 'loading' || adStatus === 'refreshing' ? 'sync' :
+                'warning'
+              } 
               size={16} 
-              color={isUnityAdsConfigured() ? "#4ade80" : "#fbbf24"} 
+              color={
+                adStatus === 'ready' ? '#4ade80' : 
+                adStatus === 'web-mock' ? '#60a5fa' :
+                adStatus === 'initializing' || adStatus === 'loading' || adStatus === 'refreshing' ? '#fbbf24' :
+                '#ef4444'
+              } 
             />
             <Text style={styles.adStatusText}>
-              {isUnityAdsConfigured() 
-                ? `Unity Ads: Test Mode (${Platform.OS})` 
-                : 'Unity Ads: Not Configured (Using Mock)'}
+              {adStatus === 'ready' && 'Unity Ads: Ready'}
+              {adStatus === 'web-mock' && 'Web Preview: Using Simulated Ads'}
+              {adStatus === 'initializing' && 'Unity Ads: Initializing...'}
+              {adStatus === 'loading' && 'Unity Ads: Loading ad...'}
+              {adStatus === 'refreshing' && 'Unity Ads: Refreshing...'}
+              {adStatus === 'not-configured' && 'Unity Ads: Not Configured'}
+              {adStatus === 'init-failed' && 'Unity Ads: Init Failed'}
+              {adStatus === 'load-failed' && 'Unity Ads: Load Failed'}
+              {adStatus === 'error' && 'Unity Ads: Error'}
             </Text>
+            <TouchableOpacity 
+              style={styles.refreshAdsButton} 
+              onPress={refreshUnityAds}
+              disabled={adStatus === 'initializing' || adStatus === 'loading' || adStatus === 'refreshing'}
+            >
+              <Ionicons name="refresh" size={16} color="#f7931a" />
+            </TouchableOpacity>
           </View>
         )}
 
